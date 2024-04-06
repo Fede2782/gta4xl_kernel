@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note
 /*
  *
- * (C) COPYRIGHT 2019-2021 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2019-2023 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -22,6 +22,12 @@
 /*
  * Base kernel context APIs
  */
+#include <linux/version.h>
+#if KERNEL_VERSION(4, 11, 0) <= LINUX_VERSION_CODE
+#include <linux/sched/task.h>
+#else
+#include <linux/sched.h>
+#endif
 
 #include <mali_kbase.h>
 #include <gpu/mali_kbase_gpu_regmap.h>
@@ -31,48 +37,6 @@
 #include <tl/mali_kbase_timeline.h>
 #include <mmu/mali_kbase_mmu.h>
 #include <context/mali_kbase_context_internal.h>
-
-#define to_kprcs(kobj) container_of(kobj, struct kbase_process, kobj)
-
-static void kbase_kprcs_release(struct kobject *kobj)
-{
-	// Nothing to release
-}
-
-static ssize_t total_gpu_mem_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
-{
-	struct kbase_process *kprcs = to_kprcs(kobj);
-	if (WARN_ON(!kprcs))
-		return 0;
-
-	return sysfs_emit(buf, "%lu\n",
-			(unsigned long) kprcs->total_gpu_pages << PAGE_SHIFT);
-}
-static struct kobj_attribute total_gpu_mem_attr = __ATTR_RO(total_gpu_mem);
-
-static ssize_t dma_buf_gpu_mem_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
-{
-	struct kbase_process *kprcs = to_kprcs(kobj);
-	if (WARN_ON(!kprcs))
-		return 0;
-
-	return sysfs_emit(buf, "%lu\n",
-			(unsigned long) kprcs->dma_buf_pages << PAGE_SHIFT);
-}
-static struct kobj_attribute dma_buf_gpu_mem_attr = __ATTR_RO(dma_buf_gpu_mem);
-
-static struct attribute *kprcs_attrs[] = {
-	&total_gpu_mem_attr.attr,
-	&dma_buf_gpu_mem_attr.attr,
-	NULL
-};
-ATTRIBUTE_GROUPS(kprcs);
-
-static struct kobj_type kprcs_ktype = {
-	.release = kbase_kprcs_release,
-	.sysfs_ops = &kobj_sysfs_ops,
-	.default_groups = kprcs_groups,
-};
 
 /**
  * find_process_node - Used to traverse the process rb_tree to find if
@@ -141,11 +105,6 @@ static int kbase_insert_kctx_to_process(struct kbase_context *kctx)
 		INIT_LIST_HEAD(&kprcs->kctx_list);
 		kprcs->dma_buf_root = RB_ROOT;
 		kprcs->total_gpu_pages = 0;
-		kprcs->dma_buf_pages = 0;
-		WARN_ON(kobject_init_and_add(
-					&kprcs->kobj, &kprcs_ktype,
-					kctx->kbdev->proc_sysfs_node,
-					"%d", tgid));
 
 		while (*new) {
 			struct kbase_process *prcs_node;
@@ -176,12 +135,49 @@ int kbase_context_common_init(struct kbase_context *kctx)
 	/* creating a context is considered a disjoint event */
 	kbase_disjoint_event(kctx->kbdev);
 
-	spin_lock_init(&kctx->mm_update_lock);
 	kctx->process_mm = NULL;
+	kctx->task = NULL;
 	atomic_set(&kctx->nonmapped_pages, 0);
 	atomic_set(&kctx->permanent_mapped_pages, 0);
 	kctx->tgid = current->tgid;
 	kctx->pid = current->pid;
+
+	/* Check if this is a Userspace created context */
+	if (likely(kctx->filp)) {
+		struct pid *pid_struct;
+
+		rcu_read_lock();
+		pid_struct = find_get_pid(kctx->tgid);
+		if (likely(pid_struct)) {
+			struct task_struct *task = pid_task(pid_struct, PIDTYPE_PID);
+
+			if (likely(task)) {
+				/* Take a reference on the task to avoid slow lookup
+				 * later on from the page allocation loop.
+				 */
+				get_task_struct(task);
+				kctx->task = task;
+			} else {
+				dev_err(kctx->kbdev->dev,
+					"Failed to get task pointer for %s/%d",
+					current->comm, current->pid);
+				err = -ESRCH;
+			}
+
+			put_pid(pid_struct);
+		} else {
+			dev_err(kctx->kbdev->dev,
+				"Failed to get pid pointer for %s/%d",
+				current->comm, current->pid);
+			err = -ESRCH;
+		}
+		rcu_read_unlock();
+
+		if (unlikely(err))
+			return err;
+                kbase_mem_mmgrab();
+                kctx->process_mm = current->mm;
+	}
 
 	atomic_set(&kctx->used_pages, 0);
 
@@ -209,13 +205,16 @@ int kbase_context_common_init(struct kbase_context *kctx)
 	mutex_init(&kctx->legacy_hwcnt_lock);
 
 	mutex_lock(&kctx->kbdev->kctx_list_lock);
-
 	err = kbase_insert_kctx_to_process(kctx);
-	if (err)
-		dev_err(kctx->kbdev->dev,
-		"(err:%d) failed to insert kctx to kbase_process\n", err);
-
 	mutex_unlock(&kctx->kbdev->kctx_list_lock);
+	if (err) {
+		dev_err(kctx->kbdev->dev,
+			"(err:%d) failed to insert kctx to kbase_process", err);
+		if (likely(kctx->filp)) {
+                        mmdrop(kctx->process_mm);
+                        put_task_struct(kctx->task);
+                }
+        }
 
 	return err;
 }
@@ -280,8 +279,6 @@ static void kbase_remove_kctx_from_process(struct kbase_context *kctx)
 		 */
 		WARN_ON(kprcs->total_gpu_pages);
 		WARN_ON(!RB_EMPTY_ROOT(&kprcs->dma_buf_root));
-		kobject_del(&kprcs->kobj);
-		kobject_put(&kprcs->kobj);
 		kfree(kprcs);
 	}
 }
@@ -300,6 +297,11 @@ void kbase_context_common_term(struct kbase_context *kctx)
 	mutex_lock(&kctx->kbdev->kctx_list_lock);
 	kbase_remove_kctx_from_process(kctx);
 	mutex_unlock(&kctx->kbdev->kctx_list_lock);
+
+	if (likely(kctx->filp)) {
+                mmdrop(kctx->process_mm);
+                put_task_struct(kctx->task);
+        }
 
 	KBASE_KTRACE_ADD(kctx->kbdev, CORE_CTX_DESTROY, kctx, 0u);
 }

@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
 /*
  *
- * (C) COPYRIGHT 2011-2021 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2011-2023 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -612,9 +612,6 @@ struct kbase_devfreq_queue_info {
  * @total_gpu_pages:    Total gpu pages allocated across all the contexts
  *                      of this process, it accounts for both native allocations
  *                      and dma_buf imported allocations.
- * @dma_buf_pages:      Total dma_buf pages allocated across all the contexts
- *                      of this process, native allocations can be accounted for
- *                      by subtracting this from &total_gpu_pages.
  * @kctx_list:          List of kbase contexts created for the process.
  * @kprcs_node:         Node to a rb_tree, kbase_device will maintain a rb_tree
  *                      based on key tgid, kprcs_node is the node link to
@@ -624,19 +621,14 @@ struct kbase_devfreq_queue_info {
  *                      Used to ensure that pages of allocation are accounted
  *                      only once for the process, even if the allocation gets
  *                      imported multiple times for the process.
- * @kobj:               Links to the per-process sysfs node
- *                      &kbase_device.proc_sysfs_node.
  */
 struct kbase_process {
 	pid_t tgid;
 	size_t total_gpu_pages;
-	size_t dma_buf_pages;
 	struct list_head kctx_list;
 
 	struct rb_node kprcs_node;
 	struct rb_root dma_buf_root;
-
-	struct kobject kobj;
 };
 
 /**
@@ -929,7 +921,6 @@ struct kbase_process {
  *                          mapping and gpu memory usage at device level and
  *                          other one at process level.
  * @total_gpu_pages:        Total GPU pages used for the complete GPU device.
- * @dma_buf_pages:          Total dma_buf pages used for GPU platform device.
  * @dma_buf_lock:           This mutex should be held while accounting for
  *                          @total_gpu_pages from imported dma buffers.
  * @gpu_mem_usage_lock:     This spinlock should be held while accounting
@@ -947,7 +938,6 @@ struct kbase_process {
  * @pcm_dev:                The priority control manager device.
  * @oom_notifier_block:     notifier_block containing kernel-registered out-of-
  *                          memory handler.
- * @proc_sysfs_node:        Sysfs directory node to store per-process stats.
  */
 struct kbase_device {
 	u32 hw_quirks_sc;
@@ -1183,7 +1173,6 @@ struct kbase_device {
 	struct rb_root dma_buf_root;
 
 	size_t total_gpu_pages;
-	size_t dma_buf_pages;
 	struct mutex dma_buf_lock;
 	spinlock_t gpu_mem_usage_lock;
 
@@ -1202,8 +1191,6 @@ struct kbase_device {
 	struct priority_control_manager_device *pcm_dev;
 
 	struct notifier_block oom_notifier_block;
-
-	struct kobject *proc_sysfs_node;
 };
 
 /**
@@ -1555,11 +1542,13 @@ struct kbase_sub_alloc {
  *                        is scheduled in and an atom is pulled from the context's per
  *                        slot runnable tree in JM GPU or GPU command queue
  *                        group is programmed on CSG slot in CSF GPU.
- * @mm_update_lock:       lock used for handling of special tracking page.
  * @process_mm:           Pointer to the memory descriptor of the process which
  *                        created the context. Used for accounting the physical
  *                        pages used for GPU allocations, done for the context,
- *                        to the memory consumed by the process.
+ *                        to the memory consumed by the process. A reference is taken
+ *                        on this descriptor for the Userspace created contexts so that
+ *                        Kbase can safely access it to update the memory usage counters.
+ *                        The reference is dropped on context termination.
  * @gpu_va_end:           End address of the GPU va space (in 4KB page units)
  * @jit_va:               Indicates if a JIT_VA zone has been created.
  * @mem_profile_data:     Buffer containing the profiling information provided by
@@ -1691,7 +1680,10 @@ struct kbase_sub_alloc {
  * @limited_core_mask:    The mask that is applied to the affinity in case of atoms
  *                        marked with BASE_JD_REQ_LIMITED_CORE_MASK.
  * @platform_data:        Pointer to platform specific per-context data.
- *
+ *  @task:                 Pointer to the task structure of the main thread of the process
+ *                        that created the Kbase context. It would be set only for the
+ *                        contexts created by the Userspace and not for the contexts
+ *                        created internally by the Kbase.*
  * A kernel base context is an entity among which the GPU is scheduled.
  * Each context has its own GPU address space.
  * Up to one context can be created for each client that opens the device file
@@ -1781,8 +1773,7 @@ struct kbase_context {
 
 	atomic_t refcount;
 
-	spinlock_t         mm_update_lock;
-	struct mm_struct __rcu *process_mm;
+        struct mm_struct *process_mm;
 	u64 gpu_va_end;
 	bool jit_va;
 
@@ -1844,6 +1835,8 @@ struct kbase_context {
 #if !MALI_USE_CSF
 	void *platform_data;
 #endif
+
+       struct task_struct *task;
 };
 
 #ifdef CONFIG_MALI_CINSTR_GWT
