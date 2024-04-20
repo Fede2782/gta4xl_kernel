@@ -112,7 +112,6 @@ struct himax_i2c_platform_data {
 	int hx_config_size;
 	bool support_aot;
 	bool support_dual_fw;
-	bool support_dex;
 
 	const char *i_CTPM_firmware_name;
 	const char *proj_name;

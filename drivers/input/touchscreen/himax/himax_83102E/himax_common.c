@@ -865,15 +865,13 @@ int himax_input_register(struct himax_ts_data *ts)
 
 #endif
 
-	if (ts->pdata->support_dex) {
-		himax_set_input_prop(ts, ts->input_dev_pad, INPUT_PROP_POINTER);
+	himax_set_input_prop(ts, ts->input_dev_pad, INPUT_PROP_POINTER);
 
-		if (input_register_device(ts->input_dev_pad) == 0)
-			ret = NO_ERR;
-		else {
-			ret = INPUT_REGISTER_FAIL;
-			return ret;
-		}
+	if (input_register_device(ts->input_dev_pad) == 0)
+		ret = NO_ERR;
+	else {
+		ret = INPUT_REGISTER_FAIL;
+		return ret;
 	}
 
 	I("%s, input device registered.\n", __func__);
@@ -3200,10 +3198,8 @@ err_input_register_device_failed:
 	if (ts->hx_pen_dev)
 		input_free_device(ts->hx_pen_dev);
 #endif
-	if (ts->pdata->support_dex) {
-		if (ts->input_dev_pad)
-			input_free_device(ts->input_dev_pad);
-	}
+	if (ts->input_dev_pad)
+		input_free_device(ts->input_dev_pad);
 err_detect_failed:
 
 #ifdef HX_CONTAINER_SPEED_UP
