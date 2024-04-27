@@ -239,11 +239,6 @@ bool FAKE_POWER_KEY_SEND = true;
 	struct proc_dir_entry *himax_proc_HSEN_file = NULL;
 #endif
 
-bool himax_epen_mode = false;
-EXPORT_SYMBOL(himax_epen_mode);
-bool himax_disable_touch = false;
-EXPORT_SYMBOL(himax_disable_touch);
-
 #if defined(HX_PALM_REPORT)
 static int himax_palm_detect(uint8_t *buf)
 {
@@ -870,7 +865,6 @@ int himax_input_register(struct himax_ts_data *ts)
 
 #endif
 
-
 	himax_set_input_prop(ts, ts->input_dev_pad, INPUT_PROP_POINTER);
 
 	if (input_register_device(ts->input_dev_pad) == 0)
@@ -882,7 +876,6 @@ int himax_input_register(struct himax_ts_data *ts)
 
 	I("%s, input device registered.\n", __func__);
 
-input_device_fail:
 	return ret;
 }
 EXPORT_SYMBOL(himax_input_register);
@@ -2432,8 +2425,6 @@ static void himax_finger_report(struct himax_ts_data *ts)
 	int i = 0;
 	bool valid = false;
 
-	if (himax_epen_mode || himax_disable_touch)
-		return;
 
 	if (g_ts_dbg != 0) {
 		I("%s:start\n", __func__);

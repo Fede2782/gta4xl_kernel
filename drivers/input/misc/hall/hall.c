@@ -42,12 +42,12 @@ struct hall_drvdata {
 	u8 event_val;
 };
 
-bool sec_flip_cover;
+static bool flip_cover;
 
 static ssize_t hall_detect_show(struct device *dev,
 				struct device_attribute *attr, char *buf)
 {
-	if (sec_flip_cover)
+	if (flip_cover)
 		sprintf(buf, "OPEN\n");
 	else
 		sprintf(buf, "CLOSE\n");
@@ -86,9 +86,9 @@ static void flip_cover_work(struct work_struct *work)
 			second ? "open" : "close");
 
 	if (first == second) {
-		sec_flip_cover = first;
+		flip_cover = first;
 
-		input_report_switch(ddata->input, ddata->event_val, !sec_flip_cover);
+		input_report_switch(ddata->input, ddata->event_val, !flip_cover);
 		input_sync(ddata->input);
 	}
 }
@@ -106,9 +106,9 @@ static void flip_cover_work(struct work_struct *work)
 	pr_info("[keys] %s flip_status : %d (%s)\n", __func__, first,
 			first ? "open" : "close");
 
-	sec_flip_cover = first;
+	flip_cover = first;
 
-	input_report_switch(ddata->input, ddata->event_val, !sec_flip_cover);
+	input_report_switch(ddata->input, ddata->event_val, !flip_cover);
 	input_sync(ddata->input);
 #else
 	first = !gpio_get_value(ddata->pdata->gpio_flip_cover_key1)
@@ -117,7 +117,7 @@ static void flip_cover_work(struct work_struct *work)
 			gpio_get_value(ddata->pdata->gpio_flip_cover_key1),
 			gpio_get_value(ddata->pdata->gpio_flip_cover_key2),
 			first);
-	if (sec_flip_cover != first) {
+	if (flip_cover != first) {
 		if (first) {
 			ddata->emulated_hall_ic_status =
 				!ddata->emulated_hall_ic_status;
@@ -127,7 +127,7 @@ static void flip_cover_work(struct work_struct *work)
 					ddata->emulated_hall_ic_status);
 			input_sync(ddata->input);
 		}
-		sec_flip_cover = first;
+		flip_cover = first;
 	}
 	schedule_delayed_work(&ddata->flip_cover_dwork, msecs_to_jiffies(1000));
 #endif
@@ -196,9 +196,9 @@ static void init_hall_ic_irq(struct input_dev *input)
 	int irq = ddata->pdata->irq_flip_cover;
 
 #if !defined(EMUALTE_HALL_IC)
-	sec_flip_cover = gpio_get_value(ddata->pdata->gpio_flip_cover);
+	flip_cover = gpio_get_value(ddata->pdata->gpio_flip_cover);
 #else
-	sec_flip_cover = 0;
+	flip_cover = 0;
 #endif
 
 	INIT_DELAYED_WORK(&ddata->flip_cover_dwork, flip_cover_work);
@@ -319,7 +319,7 @@ static int hall_probe(struct platform_device *pdev)
 
 	input->evbit[0] |= BIT_MASK(EV_SW);
 
-	ddata->event_val = SW_LID;
+	ddata->event_val = SW_FLIP;
 
 	input_set_capability(input, EV_SW, ddata->event_val);
 
