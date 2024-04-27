@@ -274,7 +274,7 @@ static int certify_hall_probe(struct platform_device *pdev)
 
 	input->evbit[0] |= BIT_MASK(EV_SW);
 
-	ddata->event_val = SW_MACHINE_COVER;
+	ddata->event_val = SW_CERTIFYHALL;
 
 	input_set_capability(input, EV_SW, ddata->event_val);
 
