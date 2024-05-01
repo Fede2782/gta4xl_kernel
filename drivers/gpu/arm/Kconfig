@@ -59,7 +59,7 @@ config MALI_BIFROST_R38P1
 
 config MALI_BIFROST_R44P0
         depends on MALI_DDK_VERSION
-        bool "Bifrost r44p0 driver for Android U"
+        bool "Bifrost r44p0 driver for Android"
 endchoice
 
 if MALI_BIFROST_R16P0
