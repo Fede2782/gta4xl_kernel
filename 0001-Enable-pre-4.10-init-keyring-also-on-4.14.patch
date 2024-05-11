@@ -1,6 +1,6 @@
-From cc9852fd187b3ab28f8cd564194d0fca86363491 Mon Sep 17 00:00:00 2001
+From 6eec31d5356ad52773db3761f3051530c3ca1540 Mon Sep 17 00:00:00 2001
 From: Fede2782 <78815152+Fede2782@users.noreply.github.com>
-Date: Tue, 23 Apr 2024 16:26:47 +0200
+Date: Sat, 11 May 2024 15:48:08 +0200
 Subject: [PATCH] Enable-pre-4.10-init-keyring-also-on-4.14
 
 ---
@@ -11,7 +11,7 @@ Subject: [PATCH] Enable-pre-4.10-init-keyring-also-on-4.14
  4 files changed, 6 insertions(+), 6 deletions(-)
 
 diff --git a/kernel/Makefile b/kernel/Makefile
-index 6692975..a11e5a9 100644
+index 66929756..a11e5a92 100644
 --- a/kernel/Makefile
 +++ b/kernel/Makefile
 @@ -21,7 +21,7 @@ ifeq ($(shell test -e $(srctree)/$(src)/../.git; echo $$?),0)
@@ -24,10 +24,10 @@ index 6692975..a11e5a9 100644
  ccflags-y += -DKSU_VERSION=$(KSU_VERSION)
  else # If there is no .git file, the default version will be passed.
 diff --git a/kernel/core_hook.c b/kernel/core_hook.c
-index fef98df..2ace543 100644
+index 71265736..c4dedece 100644
 --- a/kernel/core_hook.c
 +++ b/kernel/core_hook.c
-@@ -618,7 +618,7 @@ static int ksu_task_prctl(int option, unsigned long arg2, unsigned long arg3,
+@@ -617,7 +617,7 @@ static int ksu_task_prctl(int option, unsigned long arg2, unsigned long arg3,
  	return -ENOSYS;
  }
  // kernel 4.4 and 4.9
@@ -36,7 +36,7 @@ index fef98df..2ace543 100644
  static int ksu_key_permission(key_ref_t key_ref, const struct cred *cred,
  			      unsigned perm)
  {
-@@ -651,7 +651,7 @@ static struct security_hook_list ksu_hooks[] = {
+@@ -650,7 +650,7 @@ static struct security_hook_list ksu_hooks[] = {
  	LSM_HOOK_INIT(task_prctl, ksu_task_prctl),
  	LSM_HOOK_INIT(inode_rename, ksu_inode_rename),
  	LSM_HOOK_INIT(task_fix_setuid, ksu_task_fix_setuid),
@@ -46,7 +46,7 @@ index fef98df..2ace543 100644
  #endif
  };
 diff --git a/kernel/kernel_compat.c b/kernel/kernel_compat.c
-index 1a94f36..07542f9 100644
+index b242bc63..c52773fe 100644
 --- a/kernel/kernel_compat.c
 +++ b/kernel/kernel_compat.c
 @@ -10,7 +10,7 @@
@@ -55,9 +55,9 @@ index 1a94f36..07542f9 100644
  
 -#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 10, 0) || defined(CONFIG_IS_HW_HISI)
 +#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 15, 0) || defined(CONFIG_IS_HW_HISI)
- #include "linux/key.h"
- #include "linux/errno.h"
- #include "linux/cred.h"
+ #include <linux/key.h>
+ #include <linux/errno.h>
+ #include <linux/cred.h>
 @@ -79,7 +79,7 @@ void ksu_android_ns_fs_check()
  
  struct file *ksu_filp_open_compat(const char *filename, int flags, umode_t mode)
@@ -68,7 +68,7 @@ index 1a94f36..07542f9 100644
  	    (current->flags & PF_WQ_WORKER)) {
  		pr_info("installing init session keyring for older kernel\n");
 diff --git a/kernel/kernel_compat.h b/kernel/kernel_compat.h
-index 8638378..8f00e3f 100644
+index ba998185..d587b54e 100644
 --- a/kernel/kernel_compat.h
 +++ b/kernel/kernel_compat.h
 @@ -24,7 +24,7 @@ extern long ksu_strncpy_from_user_nofault(char *dst,
