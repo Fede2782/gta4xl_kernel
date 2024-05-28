@@ -60,6 +60,10 @@ config MALI_BIFROST_R38P1
 config MALI_BIFROST_R44P0
         depends on MALI_DDK_VERSION
         bool "Bifrost r44p0 driver for Android"
+
+config MALI_BIFROST_R49P0
+        depends on MALI_DDK_VERSION
+        bool "Bifrost r49p0 driver for Android"
 endchoice
 
 if MALI_BIFROST_R16P0
@@ -92,6 +96,10 @@ endif
 
 if MALI_BIFROST_R44P0
 source "drivers/gpu/arm/bv_r44p0/Kconfig"
+endif
+
+if MALI_BIFROST_R49P0
+source "drivers/gpu/arm/bv_r49p0/Kconfig"
 endif
 
 endmenu
