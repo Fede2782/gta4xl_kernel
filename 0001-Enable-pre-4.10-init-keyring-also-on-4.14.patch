@@ -1,0 +1,85 @@
+From 6eec31d5356ad52773db3761f3051530c3ca1540 Mon Sep 17 00:00:00 2001
+From: Fede2782 <78815152+Fede2782@users.noreply.github.com>
+Date: Sat, 11 May 2024 15:48:08 +0200
+Subject: [PATCH] Enable-pre-4.10-init-keyring-also-on-4.14
+
+---
+ kernel/Makefile        | 2 +-
+ kernel/core_hook.c     | 4 ++--
+ kernel/kernel_compat.c | 4 ++--
+ kernel/kernel_compat.h | 2 +-
+ 4 files changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/kernel/Makefile b/kernel/Makefile
+index 66929756..a11e5a92 100644
+--- a/kernel/Makefile
++++ b/kernel/Makefile
+@@ -21,7 +21,7 @@ ifeq ($(shell test -e $(srctree)/$(src)/../.git; echo $$?),0)
+ $(shell cd $(srctree)/$(src); /usr/bin/env PATH="$$PATH":/usr/bin:/usr/local/bin [ -f ../.git/shallow ] && git fetch --unshallow)
+ KSU_GIT_VERSION := $(shell cd $(srctree)/$(src); /usr/bin/env PATH="$$PATH":/usr/bin:/usr/local/bin git rev-list --count HEAD)
+ # ksu_version: major * 10000 + git version + 200 for historical reasons
+-$(eval KSU_VERSION=$(shell expr 10000 + $(KSU_GIT_VERSION) + 200))
++$(eval KSU_VERSION=$(shell expr 10000 + $(KSU_GIT_VERSION) + 199))
+ $(info -- KernelSU version: $(KSU_VERSION))
+ ccflags-y += -DKSU_VERSION=$(KSU_VERSION)
+ else # If there is no .git file, the default version will be passed.
+diff --git a/kernel/core_hook.c b/kernel/core_hook.c
+index 71265736..c4dedece 100644
+--- a/kernel/core_hook.c
++++ b/kernel/core_hook.c
+@@ -617,7 +617,7 @@ static int ksu_task_prctl(int option, unsigned long arg2, unsigned long arg3,
+ 	return -ENOSYS;
+ }
+ // kernel 4.4 and 4.9
+-#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 10, 0) || defined(CONFIG_IS_HW_HISI)
++#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 15, 0) || defined(CONFIG_IS_HW_HISI)
+ static int ksu_key_permission(key_ref_t key_ref, const struct cred *cred,
+ 			      unsigned perm)
+ {
+@@ -650,7 +650,7 @@ static struct security_hook_list ksu_hooks[] = {
+ 	LSM_HOOK_INIT(task_prctl, ksu_task_prctl),
+ 	LSM_HOOK_INIT(inode_rename, ksu_inode_rename),
+ 	LSM_HOOK_INIT(task_fix_setuid, ksu_task_fix_setuid),
+-#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 10, 0) || defined(CONFIG_IS_HW_HISI)
++#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 15, 0) || defined(CONFIG_IS_HW_HISI)
+ 	LSM_HOOK_INIT(key_permission, ksu_key_permission)
+ #endif
+ };
+diff --git a/kernel/kernel_compat.c b/kernel/kernel_compat.c
+index b242bc63..c52773fe 100644
+--- a/kernel/kernel_compat.c
++++ b/kernel/kernel_compat.c
+@@ -10,7 +10,7 @@
+ #include "klog.h" // IWYU pragma: keep
+ #include "kernel_compat.h" // Add check Huawei Device
+ 
+-#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 10, 0) || defined(CONFIG_IS_HW_HISI)
++#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 15, 0) || defined(CONFIG_IS_HW_HISI)
+ #include <linux/key.h>
+ #include <linux/errno.h>
+ #include <linux/cred.h>
+@@ -79,7 +79,7 @@ void ksu_android_ns_fs_check()
+ 
+ struct file *ksu_filp_open_compat(const char *filename, int flags, umode_t mode)
+ {
+-#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 10, 0) || defined(CONFIG_IS_HW_HISI)
++#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 15, 0) || defined(CONFIG_IS_HW_HISI)
+ 	if (init_session_keyring != NULL && !current_cred()->session_keyring &&
+ 	    (current->flags & PF_WQ_WORKER)) {
+ 		pr_info("installing init session keyring for older kernel\n");
+diff --git a/kernel/kernel_compat.h b/kernel/kernel_compat.h
+index ba998185..d587b54e 100644
+--- a/kernel/kernel_compat.h
++++ b/kernel/kernel_compat.h
+@@ -24,7 +24,7 @@ extern long ksu_strncpy_from_user_nofault(char *dst,
+ 					  const void __user *unsafe_addr,
+ 					  long count);
+ 
+-#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 10, 0) || defined(CONFIG_IS_HW_HISI)
++#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 15, 0) || defined(CONFIG_IS_HW_HISI)
+ extern struct key *init_session_keyring;
+ #endif
+ 
+-- 
+2.39.2
+
